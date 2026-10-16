@@ -1,0 +1,17 @@
+ALTER TABLE app.schools ADD COLUMN behaviour_mode text NOT NULL DEFAULT 'both' CHECK(behaviour_mode IN ('disabled','both','commendations','demerits','net'));
+ALTER TABLE app.schools ADD COLUMN shop_enabled boolean NOT NULL DEFAULT false;
+GRANT UPDATE(behaviour_mode,shop_enabled) ON app.schools TO rptpc_app;
+CREATE TABLE app.class_teachers(class_id uuid REFERENCES app.classes(id) ON DELETE CASCADE,teacher_uid text NOT NULL,PRIMARY KEY(class_id,teacher_uid));
+GRANT SELECT,INSERT,DELETE ON app.class_teachers TO rptpc_app;
+CREATE TABLE app.account_creations(request_id uuid PRIMARY KEY,creator_uid text NOT NULL,school_id uuid NOT NULL REFERENCES app.schools(id),payload_hash text NOT NULL,email text NOT NULL,firebase_uid text,completed boolean NOT NULL DEFAULT false,created_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT,INSERT,UPDATE ON app.account_creations TO rptpc_app;
+CREATE TABLE app.shop_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),school_id uuid NOT NULL REFERENCES app.schools(id),class_id uuid REFERENCES app.classes(id),title text NOT NULL CHECK(length(title) BETWEEN 1 AND 160),description text NOT NULL CHECK(length(description)<=10000),cost integer NOT NULL CHECK(cost BETWEEN 1 AND 100000),stock_scope text NOT NULL CHECK(stock_scope IN ('student','class','school')),stock integer CHECK(stock BETWEEN 0 AND 100000),active boolean NOT NULL DEFAULT true,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE app.shop_orders(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),school_id uuid NOT NULL REFERENCES app.schools(id),student_uid text NOT NULL,request_id uuid NOT NULL,payload_hash text NOT NULL,status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),total integer NOT NULL CHECK(total>0),reviewer_uid text,review_note text NOT NULL DEFAULT '',created_at timestamptz NOT NULL DEFAULT now(),reviewed_at timestamptz,UNIQUE(student_uid,request_id));
+CREATE TABLE app.shop_order_lines(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),order_id uuid NOT NULL REFERENCES app.shop_orders(id),item_id uuid NOT NULL REFERENCES app.shop_items(id),class_id uuid REFERENCES app.classes(id),title text NOT NULL,cost integer NOT NULL,quantity integer NOT NULL CHECK(quantity BETWEEN 1 AND 99));
+CREATE INDEX ON app.shop_orders(school_id,status);CREATE INDEX ON app.shop_orders(student_uid);CREATE INDEX ON app.shop_order_lines(item_id);
+GRANT SELECT,INSERT,UPDATE ON app.shop_items,app.shop_orders TO rptpc_app;
+GRANT SELECT,INSERT ON app.shop_order_lines TO rptpc_app;
+ALTER TABLE app.school_notifications ALTER COLUMN assignment_id DROP NOT NULL;
+ALTER TABLE app.school_notifications ADD COLUMN class_id uuid REFERENCES app.classes(id);
+ALTER TABLE app.school_notifications ADD COLUMN post_id uuid REFERENCES app.discussion_posts(id);
+UPDATE app.school_notifications n SET class_id=a.class_id FROM app.assignments a WHERE a.id=n.assignment_id;

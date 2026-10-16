@@ -1,0 +1,26 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+api.env
+
+server/.local/
+server/backups/
+
+# Local logs, editor state and private credentials
+*.log
+*.pid
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+coverage/
+*.pem
+*.key
+*service-account*.json
+*serviceAccount*.json
+
+# One-off local account administration (keep off the source repository)
+server/scripts/grant-ttd-admin.mjs
+server/scripts/grant-ttd-streak-admin.mjs

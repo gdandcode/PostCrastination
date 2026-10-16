@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import pg from 'pg';
+import { databaseOptions } from '../src/config.mjs';
+import { ensureProfile, updateProfile, listProfiles } from '../src/community.mjs';
+import { createApp } from '../src/app.mjs';
+const client=new pg.Client(databaseOptions());
+await client.connect();
+await client.query('BEGIN');
+let server;
+try {
+  const a={uid:randomUUID(),name:'Community test A'},b={uid:randomUUID(),name:'Community test B'};
+  const first=await ensureProfile(client,a);
+  assert.equal((await ensureProfile(client,a)).id,first.id);
+  assert.equal(first.accountRole,'student');
+  await assert.rejects(updateProfile(client,a,{accountRole:'teacher'}),e=>e.status===400);
+  await client.query("INSERT INTO app.classes(owner_uid,name,subject,code) VALUES($1,'Role check','Maths',$2)",[a.uid,randomUUID()]);
+  assert.equal((await ensureProfile(client,a)).accountRole,'teacher');
+  assert.equal((await updateProfile(client,a,{username:'Teacher test'})).accountRole,'teacher');
+  const second=await ensureProfile(client,b);
+  const list=await listProfiles(client,new URL('http://localhost/api/community'));
+  assert.ok(list.people.some(p=>p.id===first.id));
+  assert.deepEqual(Object.keys(list.people[0]).sort(),['id','profileVisibility','username']);
+  await updateProfile(client,a,{visible:false,username:'Renamed test'});
+  await ensureProfile(client,a);
+  assert.ok(!(await listProfiles(client,new URL('http://localhost/api/community'))).people.some(p=>p.id===first.id));
+  assert.equal((await ensureProfile(client,b)).username,second.username);
+  await assert.rejects(updateProfile(client,a,{uid:b.uid,visible:false}),e=>e.status===400);
+  await assert.rejects(updateProfile(client,a,{visible:'false'}),e=>e.status===400);
+  await assert.rejects(listProfiles(client,new URL('http://localhost/api/community?page=-1')),e=>e.status===400);
+  const external={uid:randomUUID(),name:'Provider Name',firebase:{sign_in_provider:'google.com'}};
+  const pending=await ensureProfile(client,external);
+  assert.equal(pending.onboardingComplete,false);
+  assert.ok(!(await listProfiles(client,new URL('http://localhost/api/community'))).people.some(p=>p.id===pending.id));
+  await assert.rejects(updateProfile(client,external,{completeSetup:true}),e=>e.status===400);
+  await assert.rejects(updateProfile(client,external,{studyLocation:42}),e=>e.status===400);
+  const completed=await updateProfile(client,external,{username:'ChosenName',studyLocation:'Sample library',completeSetup:true});
+  assert.equal(completed.onboardingComplete,true);
+  assert.equal(completed.studyLocation,'Sample library');
+  assert.equal((await ensureProfile(client,external)).username,'ChosenName');
+  const publicEntry=(await listProfiles(client,new URL('http://localhost/api/community'))).people.find(p=>p.id===pending.id);
+  assert.equal(publicEntry.username,'ChosenName');
+  assert.equal('studyLocation' in publicEntry,false);
+  server=createApp(client); // Default verification denies all unverified requests.
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const base=`http://127.0.0.1:${server.address().port}`;
+  assert.equal((await fetch(base+'/api/community')).status,401);
+  assert.equal((await fetch(base+'/api/me',{method:'POST',headers:{Authorization:'Bearer forged-token'}})).status,401);
+  console.log('PASS: registration, idempotence, shared listing, privacy, owner-scoped edits, validation, and unauthenticated rejection.');
+} finally {
+  if(server)await new Promise(resolve=>server.close(resolve));
+  await client.query('ROLLBACK');
+  await client.end();
+}

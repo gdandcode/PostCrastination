@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import pg from 'pg';
+import {databaseOptions} from '../src/config.mjs';
+import {createApp} from '../src/app.mjs';
+const db=new pg.Client(databaseOptions());await db.connect();await db.query('BEGIN');
+const owner=randomUUID(),other=randomUUID();
+const wrapper={connect:async()=>({query:(sql,args)=>db.query(sql==='BEGIN'?'SAVEPOINT http_test':sql==='COMMIT'?'RELEASE SAVEPOINT http_test':sql==='ROLLBACK'?'ROLLBACK TO SAVEPOINT http_test':sql,args),release(){}})};
+const server=createApp(wrapper,async req=>{const token=req.headers.authorization;if(!['Bearer owner','Bearer other'].includes(token))throw new Error();return {uid:token==='Bearer owner'?owner:other};});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
+const call=(path='',body,who='owner')=>fetch(base+'/api/tasks'+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+who,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+try{
+ assert.equal((await fetch(base+'/api/tasks')).status,401);
+ const draft={name:'Private task',dueDate:'2026-10-20',dateSet:'2026-10-09',description:'Test description',files:[{name:'notes.txt',base64:Buffer.from('Private attachment').toString('base64')}]};
+ let res=await call('',draft);assert.equal(res.status,200);const {id}=await res.json();
+ let task=(await (await call()).json()).tasks[0];assert.equal(task.dateSet,draft.dateSet);assert.equal(task.dueDate,draft.dueDate);assert.equal(task.description,draft.description);
+ assert.equal((await (await call('',undefined,'other')).json()).tasks.length,0);
+ const fileId=task.files[0].id;res=await call('/files/'+fileId);assert.equal(await res.text(),'Private attachment');assert.match(res.headers.get('content-disposition'),/attachment/);
+ assert.equal((await call('/files/'+fileId,undefined,'other')).status,404);
+ assert.equal((await call('/'+id,{...draft,version:0},'other')).status,404);
+ assert.equal((await call('/'+id,{action:'complete',completed:true,version:0})).status,200);
+ assert.equal((await call('/'+id,{...draft,version:0})).status,409);
+ task=(await (await call()).json()).tasks[0];assert.equal(task.completed,true);
+ assert.equal((await call('/'+id,{...draft,name:'Edited task',files:task.files,version:task.version})).status,200);
+ task=(await (await call()).json()).tasks[0];assert.equal(task.name,'Edited task');assert.equal(task.files[0].id,fileId);
+ assert.equal((await call('',{...draft,files:[{id:fileId}]},'other')).status,403);
+ assert.equal((await (await call('',undefined,'other')).json()).tasks.length,0);
+ assert.equal((await call('',{...draft,dateSet:'2026-02-30'})).status,400);
+ assert.equal((await call('',{...draft,name:' '})).status,400);
+ assert.equal((await call('',{...draft,files:[{name:'../bad.txt',base64:'YQ=='}]})).status,400);
+ assert.equal((await (await call()).json()).tasks.length,1);
+ assert.equal((await call('/'+id,{action:'delete',version:task.version})).status,200);
+ assert.equal((await call('/files/'+fileId)).status,404);
+ assert.equal((await (await call()).json()).tasks.length,0);
+ console.log('PASS: authenticated HTTP tasks, dates, private downloads, ownership, stale edits, upload rollback, completion, editing and cascading deletion. Fixtures rolled back.');
+}finally{await new Promise(resolve=>server.close(resolve));await db.query('ROLLBACK');await db.end();}

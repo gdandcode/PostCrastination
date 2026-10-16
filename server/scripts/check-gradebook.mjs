@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import pg from 'pg';
+import { databaseOptions } from '../src/config.mjs';
+import { schoolRequest } from '../src/school.mjs';
+import { gradebookRequest } from '../src/gradebook.mjs';
+import { submissionRequest } from '../src/submissions.mjs';
+import { updateProfile, listProfiles } from '../src/community.mjs';
+const db=new pg.Client(databaseOptions());await db.connect();await db.query('BEGIN');
+try{
+ const t={uid:randomUUID()},s={uid:randomUUID()},other={uid:randomUUID()};
+ const call=(fn,who,method,path,body)=>fn(db,who,method,'/api/school'+path,body);
+ const school=(who,method,path,b)=>call(schoolRequest,who,method,path,b),book=(who,method,path,b)=>call(gradebookRequest,who,method,'/gradebook'+path,b),work=(who,method,path,b)=>call(submissionRequest,who,method,path,b);
+ const c=await school(t,'POST','/classes',{name:'Gradebook class'});
+ await school(s,'POST','/join',{code:c.code});await updateProfile(db,s,{username:'nickname-only',fullName:'Alex Example'});
+ const a=await school(t,'POST','/assignments',{classId:c.id,title:'Task column',graded:true,scale:'RAG',minutes:10,addToTasks:true,published:true});
+ let table=await book(t,'GET','');assert.equal(table.students[0].full_name,'Alex Example');assert.equal(table.assignments[0].title,'Task column');assert.equal(table.students[0].cells[a.id].revision,0);
+ const publicRows=await listProfiles(db,new URL('http://localhost/api/community'));assert.ok(publicRows.people.every(p=>!('fullName'in p)&&!('full_name'in p)));
+ assert.equal((await book(other,'GET','')).students.length,0);
+ await assert.rejects(book(other,'POST','/grade',{assignmentId:a.id,studentId:s.uid,revision:0,grade:'Green'}),e=>e.status===404);
+ await assert.rejects(book(t,'POST','/grade',{assignmentId:a.id,studentId:other.uid,revision:0,grade:'Green'}),e=>e.status===403);
+ await assert.rejects(book(t,'POST','/grade',{assignmentId:a.id,studentId:s.uid,revision:0,grade:'A+'}),e=>e.status===400);
+ await book(t,'POST','/grade',{assignmentId:a.id,studentId:s.uid,revision:0,grade:'Amber'});
+ assert.equal((await school(s,'GET','')).assignments[0].grade,'Amber');
+ await assert.rejects(book(t,'POST','/grade',{assignmentId:a.id,studentId:s.uid,revision:0,grade:'Green'}),e=>e.status===409);
+ const submitted=await work(s,'POST',`/assignments/${a.id}/work`,{action:'submit',version:0,answer:'My work',files:[]});
+ await book(t,'POST','/grade',{assignmentId:a.id,studentId:s.uid,revision:1,grade:'Green'});
+ let returned=await work(s,'GET',`/assignments/${a.id}/work`);assert.equal(returned.status,'returned');assert.equal(returned.attempts[0].grade,'Green');
+ await book(t,'POST','/grade',{assignmentId:a.id,studentId:s.uid,revision:2,grade:'Amber'});
+ returned=await work(s,'GET',`/assignments/${a.id}/work`);assert.equal(returned.attempts[0].grade,'Amber');assert.equal(returned.attempts[0].id,submitted.attempts[0].id);
+ await updateProfile(db,s,{fullName:''});table=await book(t,'GET','');assert.equal(table.students[0].full_name,'');assert.ok(!JSON.stringify(table).includes('nickname-only'));
+ console.log('PASS: full-name rows, task columns, private names, grade scales, ownership, stale-grade protection, submission returns and grade amendments. Fixtures rolled back.');
+}finally{await db.query('ROLLBACK');await db.end();}
