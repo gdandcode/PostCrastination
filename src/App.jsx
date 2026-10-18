@@ -1,3 +1,4 @@
+import {clampModule,modulesOverlap,moduleCollides,planModulePlacement} from './moduleLayout.mjs';
 import LearningWorkspace from './LearningWorkspace';
 import Resources from './Resources';
 import NotificationMenu from './NotificationMenu';
@@ -354,12 +355,12 @@ const initialTasks = [
 ];
 
 const widgetCatalog = [
-  { id: "pomodoro", name: "Pomodoro timer", defaultSize: "3 x 2", defaultLayout: { x: 1, y: 1, w: 6, h: 3 } },
-  { id: "goal", name: "Goal completion", defaultSize: "3 x 2", defaultLayout: { x: 7, y: 1, w: 6, h: 3 } },
+  { id: "pomodoro", name: "Pomodoro timer", defaultSize: "6 x 3", defaultLayout: { x: 1, y: 1, w: 6, h: 3 } },
+  { id: "goal", name: "Goal completion", defaultSize: "6 x 3", defaultLayout: { x: 7, y: 1, w: 6, h: 3 } },
   { id: "taskCreator", name: "Task creator", defaultSize: "4 x 3", defaultLayout: { x: 1, y: 1, w: 4, h: 3 } },
-  { id: "overview", name: "Daily/weekly overview", defaultSize: "6 x 2", defaultLayout: { x: 1, y: 4, w: 5, h: 3 } },
-  { id: "ai", name: "AI assistant", defaultSize: "3 x 2", defaultLayout: { x: 6, y: 4, w: 3, h: 3 } },
-  { id: "music", name: "Music player", defaultSize: "3 x 2", defaultLayout: { x: 9, y: 4, w: 4, h: 3 } },
+  { id: "overview", name: "Daily/weekly overview", defaultSize: "5 x 3", defaultLayout: { x: 1, y: 4, w: 5, h: 3 } },
+  { id: "ai", name: "AI assistant", defaultSize: "3 x 3", defaultLayout: { x: 6, y: 4, w: 3, h: 3 } },
+  { id: "music", name: "Music player", defaultSize: "4 x 3", defaultLayout: { x: 9, y: 4, w: 4, h: 3 } },
 ];
 
 const moduleSizePresets = [
@@ -502,60 +503,6 @@ function updateThemeColor(theme, key, value) {
     ...theme,
     colors: { ...theme.colors, [key]: value },
   };
-}
-
-function clampModule(module) {
-  const w = Math.min(12, Math.max(3, Number(module.w) || 3));
-  const h = Math.min(6, Math.max(3, Number(module.h) || 3));
-  return {
-    ...module,
-    w,
-    h,
-    x: Math.min(13 - w, Math.max(1, Number(module.x) || 1)),
-    y: Math.min(7 - h, Math.max(1, Number(module.y) || 1)),
-  };
-}
-
-function modulesOverlap(a, b) {
-  const first = clampModule(a);
-  const second = clampModule(b);
-  return !(
-    first.x + first.w <= second.x ||
-    second.x + second.w <= first.x ||
-    first.y + first.h <= second.y ||
-    second.y + second.h <= first.y
-  );
-}
-
-function moduleCollides(candidate, modules) {
-  return modules.some((module) => module.id !== candidate.id && modulesOverlap(candidate, module));
-}
-
-function placeNewModule(id, modules) {
-  const widget = widgetCatalog.find((item) => item.id === id);
-  const base = clampModule({ id, ...(widget?.defaultLayout || { x: 1, y: 1, w: 3, h: 3 }) });
-  const occupied = new Set();
-
-  modules.forEach((module) => {
-    const safe = clampModule(module);
-    for (let y = safe.y; y < safe.y + safe.h; y += 1) {
-      for (let x = safe.x; x < safe.x + safe.w; x += 1) occupied.add(`${x}:${y}`);
-    }
-  });
-
-  for (let y = 1; y <= 7 - base.h; y += 1) {
-    for (let x = 1; x <= 13 - base.w; x += 1) {
-      let open = true;
-      for (let yy = y; yy < y + base.h; yy += 1) {
-        for (let xx = x; xx < x + base.w; xx += 1) {
-          if (occupied.has(`${xx}:${yy}`)) open = false;
-        }
-      }
-      if (open) return { ...base, x, y };
-    }
-  }
-
-  return base;
 }
 
 const STORAGE_PREFIX = "postcrastination:";
@@ -1429,11 +1376,14 @@ function CustomizeDrawer({ theme, setTheme }) {
   );
 }
 
-function ModulesAddBar({ modules, setModules }) {
+export function ModulesAddBar({ modules, setModules }) {
   const [open, setOpen] = useState(false);
+  const [message,setMessage]=useState('');
   const activeIds = modules.map((module) => module.id);
   const addModule = (id) => {
-    setModules((current) => (current.some((module) => module.id === id) ? current : [...current, placeNewModule(id, current)]));
+    const result=planModulePlacement(id,modules,widgetCatalog);
+    setMessage(result.ok?result.message:result.reason);
+    if(result.ok)setModules(current=>{const check=planModulePlacement(id,current,widgetCatalog);return check.ok?[...current,check.module]:current;});
   };
 
   return (
@@ -1451,17 +1401,18 @@ function ModulesAddBar({ modules, setModules }) {
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
             className="mb-3 w-[min(360px,calc(100vw-100px))] rounded-[1.5rem] border border-white/15 bg-black/60 p-3 shadow-xl backdrop-blur-lg"
           >
+            <p id="module-placement-feedback" role="status" aria-live="polite" className="mb-3 text-sm">{message||'Preset size is tried first. Modules can shrink to a minimum of 3 × 3.'}</p>
             <div className="grid grid-cols-2 gap-2">
               {widgetCatalog.map((widget) => (
                 <button
                   key={widget.id}
                   type="button"
-                  disabled={activeIds.includes(widget.id)}
+                  aria-describedby="module-placement-feedback"
                   onClick={() => addModule(widget.id)}
                   className="rounded-xl border border-white/10 bg-white/[0.06] p-3 text-left text-xs transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <div className="font-semibold">{widget.name}</div>
-                  <div className="mt-1 text-[11px] text-white/50">Default: {widget.defaultSize}</div>
+                  <div className="mt-1 text-[11px] text-white/50">{activeIds.includes(widget.id)?"Already on your board":"Preset: "+widget.defaultSize}</div>
                 </button>
               ))}
             </div>
@@ -2379,7 +2330,7 @@ function AchievementNotifications({ notifications, open, setOpen, onDismiss, onO
   );
 }
 
-function SiteNav({ authUser,onSchoolNotification,onTeacherHome, teacherLocked, workspaceActive, studentModeControls, view, setView, currentUser, profile, onLogout, onOwnProfile, achievementNotifications, isAdmin, onDismissAchievementNotification, onOpenAchievementNotification }) {
+export function SiteNav({ authUser,onSchoolNotification,onTeacherHome, teacherLocked, view, setView, currentUser, profile, onLogout, onOwnProfile, achievementNotifications, isAdmin, onDismissAchievementNotification, onOpenAchievementNotification }) {
   const [openDropdown, setOpenDropdown] = useState("");
   const accountsOpen = openDropdown === "accounts";
   const navUsername = profile?.username || "Account";
@@ -2404,7 +2355,7 @@ function SiteNav({ authUser,onSchoolNotification,onTeacherHome, teacherLocked, w
         <button
           type="button"
           aria-label="Postcrastination home"
-          onClick={() => openView("home")}
+          onClick={() => openView(currentUser ? "dashboard" : "home")}
           className="flex items-center gap-3 rounded-2xl px-4 py-2 text-left transition hover:bg-white/10"
         >
           <span aria-hidden="true" className="brand-mark">P</span>
@@ -2415,8 +2366,11 @@ function SiteNav({ authUser,onSchoolNotification,onTeacherHome, teacherLocked, w
         </button>
 
         <div className="site-nav-actions flex items-center gap-2">
-          {studentModeControls}
-          {currentUser && !workspaceActive && <><button type="button" onClick={() => openView("dashboard")} className={navButtonClass("dashboard")}>Home</button>{!teacherLocked && <button type="button" onClick={() => openView("planner")} className={navButtonClass("planner")}>Planner</button>}<button type="button" onClick={() => openView("teacher")} className={navButtonClass("teacher")}>Teach</button></>}
+          {currentUser && <>
+            <button type="button" onClick={() => openView("dashboard")} className={navButtonClass(teacherLocked ? "teacher" : "dashboard")}>Home</button>
+            {!teacherLocked && <button type="button" onClick={() => openView("planner")} className={navButtonClass("planner")}>Planner</button>}
+            {teacherLocked && <button type="button" onClick={() => openView("teacher")} className={navButtonClass("teacher")}>Teach</button>}
+          </>}
           <button type="button" onClick={() => openView("pricing")} className={cx(navButtonClass("pricing"), currentUser && "secondary-nav")}>
             Pricing
           </button>
@@ -2456,18 +2410,9 @@ function SiteNav({ authUser,onSchoolNotification,onTeacherHome, teacherLocked, w
                     exit={{ opacity: 0, y: -8, scale: 0.98 }}
                     className="absolute right-0 top-12 w-44 rounded-3xl border border-white/15 bg-black/55 p-2 shadow-xl backdrop-blur-lg"
                   >
-                    <button type="button" onClick={() => openView("dashboard")} className="w-full rounded-2xl px-4 py-3 text-left text-sm text-white/75 hover:bg-white/12 hover:text-white">
-                      Home
-                    </button>
-                    {!teacherLocked && <button type="button" onClick={() => openView("planner")} className="w-full rounded-2xl px-4 py-3 text-left text-sm text-white/75 hover:bg-white/12 hover:text-white">
-                      AI planner
-                    </button>}
-                    {!teacherLocked && <button type="button" onClick={()=>openView(view==="teacher"||view==="gradebook"?"dashboard":"teacher")} className="w-full rounded-2xl px-4 py-3 text-left text-sm">Switch to {view==="teacher"||view==="gradebook"?"student":"teacher"} workspace</button>}
                     <button type="button" onClick={() => openView("achievements")} className="w-full rounded-2xl px-4 py-3 text-left text-sm text-white/75 hover:bg-white/12 hover:text-white">
                       Achievements
                     </button>
-                    <button type="button" onClick={() => openView("community")} className="w-full rounded-2xl px-4 py-3 text-left text-sm text-white/75 hover:bg-white/12">Community</button>
-                    <button type="button" onClick={() => openView("pricing")} className="w-full rounded-2xl px-4 py-3 text-left text-sm text-white/75 hover:bg-white/12">Pricing</button>
                     {isAdmin && (
                       <button type="button" onClick={() => openView("admin")} className="w-full rounded-2xl px-4 py-3 text-left text-sm text-yellow-100 hover:bg-yellow-300/12 hover:text-white">
                         Admin panel
@@ -2989,7 +2934,7 @@ function EquippedTitlePill({ achievement, onOpenAchievement }) {
 
   return (
     <span
-      className="group relative mr-3 inline-flex align-middle"
+      className="profile-equipped-title group relative inline-flex align-middle"
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       onFocus={() => setOpen(true)}
@@ -2998,7 +2943,7 @@ function EquippedTitlePill({ achievement, onOpenAchievement }) {
       <button
         type="button"
         onClick={() => onOpenAchievement?.(achievement)}
-        className={cx("rounded-full border px-3 py-1 text-sm font-black shadow-lg transition hover:scale-105", rarityStyles[achievement.rarity])}
+        className={cx("profile-equipped-title-button rounded-full border transition hover:brightness-110", rarityStyles[achievement.rarity])}
       >
         {achievement.name}
       </button>
@@ -3025,7 +2970,7 @@ function EquippedTitlePill({ achievement, onOpenAchievement }) {
   );
 }
 
-function ProfilePage({ currentUser, profile, setProfile, viewedProfile, achievementStats, equippedAchievementId, onOpenAchievement }) {
+export function ProfilePage({ currentUser, profile, setProfile, viewedProfile, achievementStats, equippedAchievementId, onOpenAchievement }) {
   const visibleProfile = viewedProfile || profile || alexanderProfile;
   const isOwnProfile = Boolean(profile && visibleProfile?.uid === profile.uid);
   const [completedFocusMinutes] = useLocalCacheState("completedFocusMinutes", 0);
@@ -3136,10 +3081,10 @@ function ProfilePage({ currentUser, profile, setProfile, viewedProfile, achievem
                   Level {levelInfo.level}
                 </div>
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <div className="text-xs uppercase tracking-[0.32em] text-white/45">/user/{visibleProfile.userId ?? "new"}</div>
+                {equippedAchievement && isOwnProfile && <div className="mt-2"><EquippedTitlePill achievement={equippedAchievement} onOpenAchievement={onOpenAchievement} /></div>}
                 <h2 className="mt-2 text-4xl font-black tracking-tight">
-                  {equippedAchievement && isOwnProfile && <EquippedTitlePill achievement={equippedAchievement} onOpenAchievement={onOpenAchievement} />}
                   {visibleProfile.username || "Student"}
                 </h2>
                 <div className="mt-3 max-w-sm">
@@ -3170,7 +3115,7 @@ function ProfilePage({ currentUser, profile, setProfile, viewedProfile, achievem
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-3xl border border-white/10 bg-white/[0.06] p-4">
                     <div className="text-xs uppercase tracking-[0.2em] text-white/40">{label}</div>
-                    <div className="mt-2 text-xl font-black">{value}</div>
+                    <div className="profile-stat-value mt-2 text-xl font-normal">{value}</div>
                   </div>
                 ))}
               </div>
@@ -3236,15 +3181,15 @@ function ProfilePage({ currentUser, profile, setProfile, viewedProfile, achievem
 }
 
 
-function AchievementDetail({ achievement, stats, totalUsers, onBack }) {
+function AchievementDetail({ achievement, stats, totalUsers, onBack, backLabel="Back to achievements" }) {
   const unlocked = getUnlockedAchievements(stats).some((item) => item.id === achievement.id);
   const audience = getAchievementAudience(achievement, totalUsers);
 
   return (
-    <section className="mx-auto min-h-screen max-w-5xl px-8 pb-16 pt-36 text-white">
+    <section className="achievement-page mx-auto min-h-screen max-w-5xl px-8 pb-16 pt-36 text-white">
       <GlassPanel className="p-8">
         <button type="button" onClick={onBack} className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-bold text-white/70 transition hover:bg-white/15 hover:text-white">
-          Back to achievements
+          {backLabel}
         </button>
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_0.65fr]">
           <div>
@@ -3277,7 +3222,7 @@ function AchievementDetail({ achievement, stats, totalUsers, onBack }) {
   );
 }
 
-function AchievementsPage({ stats, initialOpenGroup, selectedAchievementId, setSelectedAchievementId, totalUsers }) {
+export function AchievementsPage({ stats, initialOpenGroup, selectedAchievementId, setSelectedAchievementId, totalUsers, detailOrigin="achievements", onBackFromDetail }) {
   const unlocked = getUnlockedAchievements(stats);
   const unlockedIds = new Set(unlocked.map((item) => item.id));
   const [openGroup, setOpenGroup] = useState("");
@@ -3288,11 +3233,11 @@ function AchievementsPage({ stats, initialOpenGroup, selectedAchievementId, setS
   }, [initialOpenGroup]);
 
   if (selectedAchievement) {
-    return <AchievementDetail achievement={selectedAchievement} stats={stats} totalUsers={totalUsers} onBack={() => setSelectedAchievementId("")} />;
+    return <AchievementDetail achievement={selectedAchievement} stats={stats} totalUsers={totalUsers} backLabel={detailOrigin==="profile"?"Back to profile":"Back to achievements"} onBack={onBackFromDetail||(()=>setSelectedAchievementId(""))} />;
   }
 
   return (
-    <section className="mx-auto min-h-screen max-w-7xl px-8 pb-16 pt-36 text-white">
+    <section className="achievement-page mx-auto min-h-screen max-w-7xl px-8 pb-16 pt-36 text-white">
       <div className="mb-6">
         <div className="text-sm uppercase tracking-[0.38em] text-white/55">achievements</div>
         <h2 className="mt-3 text-5xl font-black tracking-tight">{unlocked.length} unlocked</h2>
@@ -3497,7 +3442,7 @@ function AdminPanelPage({
   );
 }
 
-function SettingsPage({ onAppearance,currentUser, achievementStats, equippedAchievementId, setEquippedAchievementId }) {
+export function SettingsPage({ onAppearance,currentUser, achievementStats, equippedAchievementId, setEquippedAchievementId }) {
   const [newPassword, setNewPassword] = useState("");
   const [backupPassword, setBackupPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -3568,21 +3513,22 @@ function SettingsPage({ onAppearance,currentUser, achievementStats, equippedAchi
   };
 
   return (
-    <section className="mx-auto flex min-h-screen max-w-3xl items-center px-8 pb-16 pt-36 text-white">
-      <GlassPanel className="w-full p-8">
+    <section className="account-settings mx-auto flex min-h-screen w-full max-w-[1440px] items-start px-4 pb-16 pt-36 text-white sm:px-8">
+      <GlassPanel className="w-full min-w-0 p-5 sm:p-8">
         <div className="text-sm uppercase tracking-[0.38em] text-white/55">account settings</div>
         <h2 className="mt-4 text-4xl font-black tracking-tight">Settings</h2>
-        <div className="workspace-card mt-6"><h3>Appearance & accessibility</h3><p>Choose your theme, text size, contrast and motion preferences.</p><button className="workspace-secondary" onClick={onAppearance}>Open appearance settings</button></div>
+        <section className="workspace-card account-appearance-card mt-6" aria-labelledby="account-appearance-heading"><h3 id="account-appearance-heading">Appearance &amp; accessibility</h3><p>Choose your theme, text size, contrast and motion preferences.</p><button className="workspace-secondary" onClick={onAppearance}>Open appearance settings</button></section>
 
         <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.06] p-5">
           <h3 className="text-xl font-black">Equipped title</h3>
           <p className="mt-2 text-sm text-white/60">Pick an unlocked achievement to show before your username.</p>
-          <div className="mt-4 grid max-h-80 gap-3 overflow-auto pb-3 pr-5 sm:grid-cols-2">
+          <div className="account-title-picker" aria-label="Choose your equipped title">
             <button
               type="button"
               onClick={() => setEquippedAchievementId("")}
+              aria-pressed={equippedAchievementId === ""}
               className={cx(
-                "rounded-2xl border p-4 text-left transition hover:scale-[1.01]",
+                "account-title-option rounded-2xl border p-4 text-left transition",
                 equippedAchievementId === "" ? "border-white/55 bg-white/15 shadow-lg shadow-white/10" : "border-white/10 bg-black/20 text-white/65"
               )}
             >
@@ -3596,15 +3542,16 @@ function SettingsPage({ onAppearance,currentUser, achievementStats, equippedAchi
                   key={achievement.id}
                   type="button"
                   onClick={() => setEquippedAchievementId(achievement.id)}
+                  aria-pressed={selected}
                   className={cx(
-                    "rounded-2xl border p-4 text-left transition hover:scale-[1.01]",
+                    "account-title-option rounded-2xl border p-4 text-left transition",
                     rarityStyles[achievement.rarity],
-                    selected && "ring-2 ring-white/70 shadow-xl shadow-white/10"
+                    selected && "account-title-selected"
                   )}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-black">{achievement.name}</div>
-                    <div className="rounded-full bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em]">
+                  <div className="account-title-header">
+                    <div className="account-title-name text-sm font-black">{achievement.name}</div>
+                    <div className="account-title-rarity rounded-full bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em]">
                       {achievement.rarity}
                     </div>
                   </div>
@@ -3618,7 +3565,7 @@ function SettingsPage({ onAppearance,currentUser, achievementStats, equippedAchi
         <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.06] p-5">
           <h3 className="text-xl font-black">Sign-in methods</h3>
           <p className="mt-2 text-sm text-white/60">Connect extra ways to sign in so you do not get locked out.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="account-signin-grid mt-4">
             <div className="rounded-2xl bg-black/20 p-4">
               <div className="text-sm font-bold">Google</div>
               <div className="mt-1 text-xs text-white/50">{hasGoogle ? "Connected" : "Not connected"}</div>
@@ -3653,23 +3600,22 @@ function SettingsPage({ onAppearance,currentUser, achievementStats, equippedAchi
   );
 }
 
-function DashboardApp({ notificationTarget,workspaceMode,setWorkspaceMode,currentUser, schoolViewer, schoolDemo, theme, setTheme, setView, completedFocusMinutes, setCompletedFocusMinutes, setStudyPeriods, onTaskCreated, onPomodoroComplete, getActivitySnapshot }) {
+export function DashboardApp({ schoolAccount=false,notificationTarget,workspaceMode,setWorkspaceMode,currentUser, schoolViewer, schoolDemo, theme, setTheme, setView, completedFocusMinutes, setCompletedFocusMinutes, setStudyPeriods, onTaskCreated, onPomodoroComplete, getActivitySnapshot }) {
   const [section, setSection] = useState("learning");
   const [localPersonalTasks, setLocalPersonalTasks] = useLocalCacheState("tasks", initialTasks);
   const personalStore = usePersonalTasks(currentUser);
   const personalTasks = currentUser ? personalStore.tasks : localPersonalTasks;
   const setPersonalTasks = setLocalPersonalTasks;
   const [schoolData] = useSchoolData();
-  const liveSchool = useLiveSchool(currentUser);
-  const assignedTasks = currentUser ? liveSchool.data.assignments.filter(a => !a.owned && !a.done && a.details.addToTasks).map(a => ({id:'school:'+a.id,schoolAssignmentId:a.id,name:a.title,dueDate:a.details.due,urgency:'Medium',labels:['School',a.class_name]})) : schoolTasks(schoolData, schoolViewer);
+  const liveSchool = useLiveSchool(schoolAccount ? currentUser : null);
+  const assignedTasks = !schoolAccount ? [] : currentUser ? liveSchool.data.assignments.filter(a => !a.owned && !a.done && a.details.addToTasks).map(a => ({id:'school:'+a.id,schoolAssignmentId:a.id,name:a.title,dueDate:a.details.due,urgency:'Medium',labels:['School',a.class_name]})) : schoolTasks(schoolData, schoolViewer);
   const tasks = [...personalTasks.filter(t => !t.schoolAssignmentId), ...assignedTasks];
   const setTasks = updater => setPersonalTasks(current => { const combined = [...current.filter(t => !t.schoolAssignmentId), ...assignedTasks]; return (typeof updater === "function" ? updater(combined) : updater).filter(t => !t.schoolAssignmentId); });
 
   const [homeRequest, setHomeRequest] = useState(0);
-  const goHome = () => { setWorkspaceMode("home"); setHomeRequest(n => n + 1); setCustomizeOpen(false); };
-  useEffect(() => { const home = () => { setWorkspaceMode("home"); setHomeRequest(n => n + 1); setCustomizeOpen(false); }; window.addEventListener("student-home", home); return () => window.removeEventListener("student-home", home); }, []);
+  useEffect(() => { const home = () => { if(!schoolAccount)setSection("learning"); setWorkspaceMode("home"); setHomeRequest(n => n + 1); setCustomizeOpen(false); }; window.addEventListener("student-home", home); return () => window.removeEventListener("student-home", home); }, [schoolAccount]);
   useEffect(()=>{const study=()=>{setSection("learning");setCustomizeOpen(false);};window.addEventListener("student-study",study);return()=>window.removeEventListener("student-study",study);},[]);
-  const inSchoolMode = !["personal","todo"].includes(workspaceMode);
+  const inSchoolMode = schoolAccount && !["personal","todo"].includes(workspaceMode);
   useEffect(()=>{if(workspaceMode==="todo")setSection("tasks");if(workspaceMode==="personal")setSection("learning");},[workspaceMode]);
   const [modules, setModules] = useLocalCacheState("modules", defaultModules);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -3680,19 +3626,19 @@ function DashboardApp({ notificationTarget,workspaceMode,setWorkspaceMode,curren
   const personalTaskPanel = <PersonalTasks user={currentUser} store={personalStore} tasks={personalTasks.filter(t=>!t.schoolAssignmentId)} onLocalChange={setLocalPersonalTasks} legacyTasks={localPersonalTasks} onTaskCreated={onTaskCreated}/>;
   useEffect(() => { runSelfTests(); }, []);
   return <section className="study-workspace student-dashboard relative z-10 mx-auto max-w-7xl px-4 pb-28 pt-32 sm:px-8">
-    <header hidden={!inSchoolMode&&section==="learning"} className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>{!inSchoolMode && <button className="school-text-button mb-3" onClick={goHome}>← Home</button>}<h1 className="text-3xl font-black tracking-tight sm:text-4xl">{inSchoolMode ? ({home:"Your dashboard",school:"School",classes:"Your classes"}[workspaceMode]||"Your dashboard") : section === "today" ? "Study mode" : sections.find(([id]) => id === section)?.[1]}</h1><p className="mt-2 text-sm text-white/65">{inSchoolMode ? "A place to start, see what’s due and find your classes." : "Your timer, tasks and study tools, together."}</p></div>
-
-    </header>
-    <div hidden={inSchoolMode}>
-    <nav aria-label="Study navigation" className="study-tabs mb-6 flex gap-2">
+    <nav hidden={inSchoolMode} aria-label="Study navigation" className="study-tabs mb-6 flex gap-2">
       {sections.map(([id,label]) => <button key={id} aria-current={section === id ? "page" : undefined} className={cx("workspace-tab", section === id && "selected")} onClick={() => setSection(id)}>{label}</button>)}
     </nav>
-    {!inSchoolMode&&section==="learning"&&<LearningWorkspace user={currentUser}/>}
+    <header hidden={!inSchoolMode&&section==="learning"} className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div><h1 className="text-3xl font-black tracking-tight sm:text-4xl">{inSchoolMode ? ({home:"Your dashboard",school:"School",classes:"Your classes"}[workspaceMode]||"Your dashboard") : section === "today" ? "Study mode" : sections.find(([id]) => id === section)?.[1]}</h1><p className="mt-2 text-sm text-white/65">{inSchoolMode ? "A place to start, see what’s due and find your classes." : "Your timer, tasks and study tools, together."}</p></div>
+
+    </header>
+    <div hidden={inSchoolMode} className="study-mode-content">
+    {!inSchoolMode&&section==="learning"&&<LearningWorkspace user={currentUser} schoolAccount={schoolAccount}/>}
     <div hidden={section !== "today"}>
           <div className="next-step rounded-3xl border border-purple-200/25 p-6 sm:p-7">
             <p className="text-xs font-bold uppercase tracking-widest text-purple-200">Start here</p><h2 className="mt-3 text-2xl font-bold">{upcoming[0]?.name || "Make room for your next idea"}</h2><p className="mt-2 text-sm text-white/70">{upcoming[0] ? (upcoming[0].dueDate ? "Due " + upcoming[0].dueDate + " · Choose a small goal and give it your focus." : "Pick one small step to work on during your next focus session.") : "Add a task, then set aside a little time to work on it."}</p>
-            <div className="mt-5 flex flex-wrap gap-3"><button className="workspace-primary" onClick={() => { if (upcoming.length) { setModuleEditOpen(false); if (!modules.some(module => module.id === "pomodoro")) setModules(current => [...current, placeNewModule("pomodoro", current)]); requestAnimationFrame(() => document.getElementById("today-focus-start")?.focus()); } else setSection("tasks"); }}>{upcoming.length ? "Go to focus timer" : "Add your first task"}</button><button className="workspace-secondary" onClick={() => setView("planner")}>Plan my study time</button></div>
+            <div className="mt-5 flex flex-wrap gap-3">{!upcoming.length&&<button className="workspace-primary" onClick={() => setSection("tasks")}>Add your first task</button>}<button className="workspace-secondary" onClick={() => setView("planner")}>Plan my study time</button></div>
           </div>
       <div className="my-5 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-bold">Your study modules</h2><button className="workspace-secondary" aria-pressed={moduleEditOpen} onClick={() => setModuleEditOpen(!moduleEditOpen)}>{moduleEditOpen ? "Finish editing" : "Edit modules"}</button></div>
       {moduleEditOpen && <p className="mb-4 text-sm text-white/60">Add or remove modules. On wider screens, drag the corners to resize them.</p>}
@@ -3703,8 +3649,8 @@ function DashboardApp({ notificationTarget,workspaceMode,setWorkspaceMode,curren
     <div hidden={section !== "calendar"} className="workspace-card"><WeeklyCalendar tasks={tasks} /></div>
     {!inSchoolMode && section === "today" && moduleEditOpen && <ModulesAddBar modules={modules} setModules={setModules} />}
     </div>
-    {workspaceMode==="home"&&<section className="workspace-card dashboard-task-overview"><header className="assignment-header"><h2>Your tasks</h2><button className="workspace-secondary" onClick={()=>setWorkspaceMode("todo")}>Personal to-do list</button></header><p>{dashboardTasks.length} tasks to work on</p>{dashboardTasks.slice(0,5).map(t=><div className="assignment-deadline" key={t.id}><div><strong>{t.name}</strong><p>{t.schoolAssignmentId?"School assignment":"Personal task"} · {t.dueDate?"Due "+t.dueDate:"No deadline"}</p></div><button className="workspace-secondary" onClick={()=>setWorkspaceMode(t.schoolAssignmentId?"school":"todo")}>View</button></div>)}{!dashboardTasks.length&&<p>Your tasks will appear here. Add a personal task or join a class to get started.</p>}</section>}
-    {<div hidden={!inSchoolMode}>{currentUser ? <LiveStudent notificationTarget={notificationTarget} destination={workspaceMode} key={homeRequest} school={liveSchool} personalTasks={personalTasks} onStudy={() => { setSection("learning"); setWorkspaceMode("personal"); }} onPersonalTasks={() => { setSection("tasks"); setWorkspaceMode("todo"); }} /> : <StudentSchoolSpace destination={workspaceMode} viewer={schoolViewer} homeRequest={homeRequest} personalTasks={personalTasks} onStudy={() => { setSection("learning"); setWorkspaceMode("personal"); }} onPersonalTasks={() => { setSection("tasks"); setWorkspaceMode("todo"); }} />}</div>}
+    {workspaceMode==="home"&&<section className="workspace-card dashboard-task-overview"><header className="assignment-header"><h2>Your tasks</h2><button className="workspace-secondary" onClick={()=>setWorkspaceMode("todo")}>Personal to-do list</button></header><p>{dashboardTasks.length} tasks to work on</p>{dashboardTasks.slice(0,5).map(t=><div className="assignment-deadline" key={t.id}><div><strong>{t.name}</strong><p>{t.schoolAssignmentId?"School assignment":"Personal task"} · {t.dueDate?"Due "+t.dueDate:"No deadline"}</p></div><button className="workspace-secondary" onClick={()=>setWorkspaceMode(t.schoolAssignmentId?"school":"todo")}>View</button></div>)}{!dashboardTasks.length&&<p>Your tasks will appear here. Add a personal task{schoolAccount?" or join a class":""} to get started.</p>}</section>}
+    {schoolAccount&&<div hidden={!inSchoolMode}>{currentUser ? <LiveStudent notificationTarget={notificationTarget} destination={workspaceMode} key={homeRequest} school={liveSchool} personalTasks={personalTasks} onStudy={() => { setSection("learning"); setWorkspaceMode("personal"); }} onPersonalTasks={() => { setSection("tasks"); setWorkspaceMode("todo"); }} /> : <StudentSchoolSpace destination={workspaceMode} viewer={schoolViewer} homeRequest={homeRequest} personalTasks={personalTasks} onStudy={() => { setSection("learning"); setWorkspaceMode("personal"); }} onPersonalTasks={() => { setSection("tasks"); setWorkspaceMode("todo"); }} />}</div>}
     {customizeOpen && <><button aria-label="Close appearance settings" className="fixed inset-0 z-30 bg-black/50" onClick={() => setCustomizeOpen(false)} /><CustomizeDrawer theme={theme} setTheme={setTheme} /><button className="fixed right-8 top-28 z-50 workspace-secondary" onClick={() => setCustomizeOpen(false)}>Done</button></>}
   </section>;
 }
@@ -3721,12 +3667,13 @@ export default function App() {
   useEffect(() => { const previous = document.documentElement.style.fontSize; document.documentElement.style.fontSize = `${Number(theme.textScale) || 100}%`; return () => { document.documentElement.style.fontSize = previous; }; }, [theme.textScale]);
   const [view, setView] = useLocalCacheState("siteView", "home");
   const [accountRole,setAccountRole]=useState(null);
+  const [schoolAccount,setSchoolAccount]=useState(false);
   const [streakAdmin,setStreakAdmin]=useState(false);
   const [accountError,setAccountError]=useState("");
   const [accountRetry,setAccountRetry]=useState(0);
   useEffect(()=>{if(accountRole==="teacher"||view==="teacher"||view==="gradebook")setNavigationRole("teacher");else if(view==="dashboard")setNavigationRole("student");},[view,accountRole]);
   const [currentUser, setCurrentUser] = useState(null);
-  const {features:schoolFeatures}=useSchoolFeatures(currentUser);
+  const {features:schoolFeatures}=useSchoolFeatures(schoolAccount ? currentUser : null);
   const [notificationTarget,setNotificationTarget]=useState(null);
 
   useEffect(()=>{if(readLocalCache("devBypassLogin",false)){setDevBypass(false);setSchoolRole(null);setNavigationRole("student");setView("login");}},[]);
@@ -3746,6 +3693,7 @@ export default function App() {
   const [knownAchievementIds, setKnownAchievementIds] = useLocalCacheState("knownAchievementIds", []);
   const [selectedAchievementGroup, setSelectedAchievementGroup] = useState("");
   const [selectedAchievementId, setSelectedAchievementId] = useState("");
+  const [achievementOrigin,setAchievementOrigin]=useState("achievements");
   const [specialBadges, setSpecialBadges] = useLocalCacheState("specialBadges", []);
   const [xpTotal, setXpTotal] = useLocalCacheState("xpTotal", 0);
   const [xpToday, setXpToday] = useLocalCacheState("xpToday", { date: todayKey(), value: 0 });
@@ -3944,7 +3892,7 @@ export default function App() {
     let generation=0;
     const unsubscribe=onAuthStateChanged(auth, async user => {
       const request=++generation;
-      setCurrentUser(user);setAccountRole(null);setStreakAdmin(false);setAccountError("");
+      setCurrentUser(user);setSchoolAccount(false);setAccountRole(null);setStreakAdmin(false);setAccountError("");
       if(!user){setAuthReady(true);return;}
       setAuthReady(false);setDevBypass(false);setSchoolRole(null);
       try {
@@ -3952,8 +3900,8 @@ export default function App() {
         if(request!==generation)return;
         const role=shared.accountRole;
         if(!["teacher","student","sysadmin"].includes(role))throw new Error("Your account workspace could not be loaded.");
-        setAccountRole(role);setStreakAdmin(shared.streakAdmin===true);setNavigationRole(role);setWorkspaceMode("home");setTeacherDestination("home");
-        setView(role==="sysadmin"?"schooladmin":role==="teacher"?"teacher":"dashboard");setAuthReady(true);
+        setSchoolAccount(shared.accountType==="school"&&!!shared.schoolId);setAccountRole(role);setStreakAdmin(shared.streakAdmin===true);setNavigationRole(role);setWorkspaceMode("home");setTeacherDestination("home");
+        setView(shared.accountType==="school"?(role==="sysadmin"?"schooladmin":role==="teacher"?"teacher":"dashboard"):"dashboard");setAuthReady(true);
       } catch(error){if(request===generation)setAccountError(error.message||"Could not load your workspace. Please try again.");}
     });
     return ()=>{generation++;unsubscribe();};
@@ -3980,12 +3928,14 @@ export default function App() {
 
   const openAchievementFromNotification = (notification) => {
     dismissAchievementNotification(notification);
+    setAchievementOrigin(view==="profile"?"profile":"achievements");
     setSelectedAchievementGroup(notification.groupKey);
     setSelectedAchievementId(notification.id);
     setView("achievements");
   };
 
   const openAchievementDetail = (achievement) => {
+    setAchievementOrigin("profile");
     setSelectedAchievementGroup(achievement.groupKey);
     setSelectedAchievementId(achievement.id);
     setView("achievements");
@@ -3994,10 +3944,10 @@ export default function App() {
   const demoRole = import.meta.env.DEV && devBypass ? schoolRole : null;
   const hasAccess = Boolean(currentUser || devBypass);
   const sessionUser = currentUser || (devBypass ? { uid: "dev-bypass-alexander" } : null);
-  const teacherLocked=currentUser?["teacher","sysadmin"].includes(accountRole):demoRole==="teacher";
-  const chooseStudentMode=mode=>{setNotificationTarget(null);if(teacherLocked){setView("teacher");return;}setNavigationRole("student");if(mode==='resources'){setView('resources');return;}if(mode==='behaviour'){setView("behaviour");return;}if(mode==='settings'){setView("settings");return;}setWorkspaceMode(mode);setView("dashboard");if(mode==='home')window.dispatchEvent(new Event('student-home'));if(mode==='personal')window.dispatchEvent(new Event('student-study'));};
+  const teacherLocked=currentUser?schoolAccount&&["teacher","sysadmin"].includes(accountRole):demoRole==="teacher";
+  const chooseStudentMode=mode=>{if(currentUser&&!schoolAccount&&mode==="personal")mode="home";if(currentUser&&!schoolAccount&&!["home","personal","todo","achievements","settings"].includes(mode)){setWorkspaceMode("home");setView("dashboard");return;}setNotificationTarget(null);if(teacherLocked){setView("teacher");return;}setNavigationRole("student");if(mode==="achievements"){setSelectedAchievementId("");setAchievementOrigin("achievements");setView("achievements");return;}if(mode==='resources'){setView('resources');return;}if(mode==='behaviour'){setView("behaviour");return;}if(mode==='settings'){setView("settings");return;}setWorkspaceMode(mode);setView("dashboard");if(mode==='home')window.dispatchEvent(new Event('student-home'));if(mode==='personal')window.dispatchEvent(new Event('student-study'));};
   const chooseTeacherPage=page=>{setNotificationTarget(null);setNavigationRole("teacher");setBehaviourClassId(null);if(page==='resources'){setView('resources');return;}if(page==="behaviour"){setView("behaviour");return;}if(page==="settings"){setView("settings");return;}if(page==="gradebook"){setView("gradebook");return;}setTeacherDestination(page);setView("teacher");};
-  const activeView = resolveWorkspaceView({view,authReady,hasAccess,teacherLocked,sysadmin:!!currentUser&&accountRole==="sysadmin"});
+  const activeView = resolveWorkspaceView({view,authReady,hasAccess,teacherLocked,sysadmin:!!currentUser&&schoolAccount&&accountRole==="sysadmin",schoolAccount:schoolAccount||!!demoRole});
 
   return (
     <MotionConfig reducedMotion={theme.reduceMotion ? "always" : "user"}><main data-reading-space={String(Boolean(theme.readingSpace))} data-large-controls={String(Boolean(theme.largeControls))} data-reduce-motion={String(Boolean(theme.reduceMotion))} data-theme={appliedTheme.palette} data-glass={String(appliedTheme.glassEnabled)} className="themed-app relative min-h-screen overflow-hidden font-sans text-white" style={buildThemeVars(appliedTheme)}>
@@ -4009,13 +3959,12 @@ export default function App() {
         writeLocalCache(`pendingProfile:${currentUser.uid}`,next);setProfile(current=>({...current,...next}));
       }}/>}
       {demoRole ? <SchoolDemoNav  role={demoRole} onHome={() => { setTeacherDestination("home");setWorkspaceMode("home");window.dispatchEvent(new Event("student-home")); setView(demoRole === "teacher" ? "teacher" : "dashboard"); }} onAppearance={() => setAccessibilityOpen(true)} onSwitch={()=>clearWorkspace()} /> : <SiteNav
-        authUser={currentUser}
-        onSchoolNotification={notification=>{setNotificationTarget({...notification,nonce:crypto.randomUUID()});setBehaviourClassId(null);if(accountRole==='teacher'){setTeacherDestination('classes');setView('teacher');}else{setWorkspaceMode(notification.post_id?'classes':'school');setView('dashboard');}}}
+        authUser={schoolAccount?currentUser:null}
+        onSchoolNotification={notification=>{if(!schoolAccount)return;setNotificationTarget({...notification,nonce:crypto.randomUUID()});setBehaviourClassId(null);if(accountRole==='teacher'){setTeacherDestination('classes');setView('teacher');}else{setWorkspaceMode(notification.post_id?'classes':'school');setView('dashboard');}}}
         onTeacherHome={()=>{setNotificationTarget(null);setTeacherDestination("home");setBehaviourClassId(null);}}
         teacherLocked={teacherLocked}
-        workspaceActive={["schooladmin","dashboard","teacher","gradebook","settings","behaviour","resources"].includes(activeView)}
         view={activeView}
-        setView={setView}
+        setView={next=>{if(next==="achievements"){setSelectedAchievementId("");setAchievementOrigin("achievements");}setView(next);}}
         currentUser={authReady&&hasAccess}
         profile={profile}
         onLogout={handleLogout}
@@ -4026,7 +3975,7 @@ export default function App() {
         onOpenAchievementNotification={openAchievementFromNotification}
       />}
 
-      {currentUser&&accountRole==="sysadmin"&&["schooladmin","settings","resources"].includes(activeView)?<StudentSidebar role="sysadmin" active={["settings","resources"].includes(activeView)?activeView:teacherDestination} onNavigate={page=>{if(["settings","resources"].includes(page))setView(page);else{setTeacherDestination(page);setView("schooladmin");}}}/>:(hasAccess&&["schooladmin","dashboard","teacher","gradebook","settings","behaviour","resources"].includes(activeView)&&<StudentSidebar behaviourEnabled={schoolFeatures?.mode!=='disabled'||!!schoolFeatures?.shopEnabled} role={teacherLocked?"teacher":activeView==="teacher"||activeView==="gradebook"?"teacher":activeView==="dashboard"?"student":navigationRole} demo={!!demoRole} active={["settings","behaviour","gradebook","resources"].includes(activeView)?activeView:activeView==="teacher"?teacherDestination:workspaceMode} onNavigate={teacherLocked||activeView==="teacher"||activeView==="gradebook"||["settings","behaviour","resources"].includes(activeView)&&navigationRole==="teacher"?chooseTeacherPage:chooseStudentMode}/>)}
+      {currentUser&&schoolAccount&&accountRole==="sysadmin"&&["schooladmin","settings","resources"].includes(activeView)?<StudentSidebar role="sysadmin" active={["settings","resources"].includes(activeView)?activeView:teacherDestination} onNavigate={page=>{if(["settings","resources"].includes(page))setView(page);else{setTeacherDestination(page);setView("schooladmin");}}}/>:(hasAccess&&(["schooladmin","dashboard","teacher","gradebook","settings","behaviour","resources"].includes(activeView)||(activeView==="achievements"&&!teacherLocked&&accountRole!=="sysadmin"))&&<StudentSidebar behaviourEnabled={schoolFeatures?.mode!=='disabled'||!!schoolFeatures?.shopEnabled} role={currentUser&&!schoolAccount?"personal":teacherLocked?"teacher":activeView==="teacher"||activeView==="gradebook"?"teacher":activeView==="dashboard"?"student":navigationRole} demo={!!demoRole} active={["settings","behaviour","gradebook","resources","achievements"].includes(activeView)?activeView:activeView==="teacher"?teacherDestination:workspaceMode} onNavigate={currentUser&&!schoolAccount?chooseStudentMode:teacherLocked||activeView==="teacher"||activeView==="gradebook"||["settings","behaviour","resources"].includes(activeView)&&navigationRole==="teacher"?chooseTeacherPage:chooseStudentMode}/>)}
       <AnimatePresence mode="wait">
         <motion.div
           key={activeView}
@@ -4062,7 +4011,9 @@ export default function App() {
               stats={achievementStats}
               initialOpenGroup={selectedAchievementGroup}
               selectedAchievementId={selectedAchievementId}
-              setSelectedAchievementId={setSelectedAchievementId}
+              setSelectedAchievementId={id=>{setAchievementOrigin("achievements");setSelectedAchievementId(id);}}
+              detailOrigin={achievementOrigin}
+              onBackFromDetail={()=>{setSelectedAchievementId("");if(achievementOrigin==="profile")setView("profile");setAchievementOrigin("achievements");}}
               totalUsers={totalUserCount}
             />
           )}
@@ -4095,6 +4046,7 @@ export default function App() {
           {authReady && activeView === "settings" && <div className="workspace-rail-page"><SettingsPage onAppearance={()=>setAccessibilityOpen(true)} currentUser={currentUser} achievementStats={achievementStats} equippedAchievementId={equippedAchievementId} setEquippedAchievementId={setEquippedAchievementId} /></div>}
           {authReady && activeView === "dashboard" && (
             <DashboardApp
+              schoolAccount={schoolAccount||!!demoRole}
               notificationTarget={notificationTarget}
               workspaceMode={workspaceMode}
               setWorkspaceMode={setWorkspaceMode}

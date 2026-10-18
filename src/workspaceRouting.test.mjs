@@ -27,3 +27,17 @@ test('teacher lock does not override sign-out or pending account lookup',()=>{
 test('school admins get their own workspace and can sign out',()=>{assert.equal(route({sysadmin:true,teacherLocked:true,view:'teacher'}),'schooladmin');assert.equal(route({sysadmin:true,view:'login'}),'login');assert.equal(route({sysadmin:true,hasAccess:false,view:'schooladmin'}),'login');});
 
 test('resources are protected and reachable by each workspace role',()=>{assert.equal(route({view:'resources',hasAccess:false}),'login');for(const role of [{},{teacherLocked:true},{teacherLocked:true,sysadmin:true}])assert.equal(route({view:'resources',...role}),'resources');});
+
+test('personal and student accounts cannot open teacher workspaces through stale navigation',()=>{
+  for (const view of ['teacher','gradebook','schooladmin']) assert.equal(route({view}),'dashboard');
+  for (const view of ['dashboard','planner','community','pricing']) assert.equal(route({view}),view);
+});
+
+test('personal accounts cannot restore any school page from saved navigation',()=>{
+  for(const view of ['teacher','gradebook','schooladmin','behaviour','resources']) {
+    assert.equal(route({view,schoolAccount:false}),'dashboard');
+  }
+  for(const view of ['dashboard','planner','settings','community','profile','achievements','admin']) {
+    assert.equal(route({view,schoolAccount:false}),view);
+  }
+});

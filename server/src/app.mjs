@@ -12,6 +12,7 @@ import { discussionRequest } from './discussions.mjs';
 import { createServer } from 'node:http';
 import { ensureProfile, updateProfile, listProfiles } from './community.mjs';
 import { schoolRequest } from './school.mjs';
+import { isSchoolEndpoint,requireSchoolAccount } from './schoolAccess.mjs';
 
 // Community routes require a verified Firebase identity.
 export function createApp(pool, verify = async () => { throw new Error("Sign in required"); }) {
@@ -21,6 +22,13 @@ export function createApp(pool, verify = async () => { throw new Error("Sign in 
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const send = (code, body) => { res.writeHead(code); res.end(JSON.stringify(body)); };
     const path = req.url?.split('?')[0];
+    // Check account membership before any school handler, including downloads and mutations.
+    if(isSchoolEndpoint(path)) {
+      let identity;
+      try {identity=await verify(req);} catch {return send(401,{error:'Please sign in again.'});}
+      try {await requireSchoolAccount(pool,identity);}
+      catch(error) {return send(error.status||503,{error:error.status?error.message:'Account permissions could not load. Please try again.'});}
+    }
     if(path==='/api/school-management/accounts'&&req.method==='POST'){
       let identity;try{identity=await verify(req);}catch{return send(401,{error:'Please sign in again.'});}let client;
       try{if(!req.headers['content-type']?.startsWith('application/json'))return send(415,{error:'JSON required'});let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>4096)return send(413,{error:'Request too large'});}let body;try{body=JSON.parse(raw);}catch{return send(400,{error:'Invalid JSON'});}client=await pool.connect();return send(200,await createSchoolAccount(client,identity,body));}

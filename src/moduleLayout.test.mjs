@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {planModulePlacement,moduleCollides} from './moduleLayout.mjs';
+const catalog=[{id:'timer',name:'Timer',defaultLayout:{x:1,y:1,w:6,h:3}},{id:'small',name:'Small',defaultLayout:{x:1,y:1,w:3,h:3}}];
+test('uses preset size wherever it fits, before considering smaller gaps',()=>{const occupied=[{id:'a',x:4,y:1,w:4,h:3}];const result=planModulePlacement('timer',occupied,catalog);assert.equal(result.ok,true);assert.equal(result.module.w,6);assert.equal(result.module.y,4);assert.equal(result.reduced,false);assert.equal(moduleCollides(result.module,occupied),false);});
+test('shrinks to the largest usable rectangle without moving existing modules',()=>{const occupied=[{id:'a',x:1,y:1,w:8,h:6}],copy=JSON.stringify(occupied);const r=planModulePlacement('timer',occupied,catalog);assert.deepEqual(r.module,{id:'timer',w:4,h:3,x:9,y:1});assert.equal(r.reduced,true);assert.equal(JSON.stringify(occupied),copy);});
+test('rejects duplicate modules even when space remains',()=>{const r=planModulePlacement('timer',[{id:'timer',x:1,y:1,w:3,h:3}],catalog);assert.equal(r.ok,false);assert.match(r.reason,/already/);});
+test('rejects a full board and gaps smaller than minimum width or height',()=>{for(const occupied of [[{id:'a',x:1,y:1,w:12,h:6}],[{id:'a',x:1,y:1,w:10,h:6}],[{id:'a',x:1,y:1,w:12,h:4}]]){const r=planModulePlacement('timer',occupied,catalog);assert.equal(r.ok,false);assert.match(r.reason,/at least 3 × 3/);assert.equal(r.module,undefined);}});
+test('does not stretch small modules or accept unknown IDs',()=>{assert.equal(planModulePlacement('small',[],catalog).module.w,3);assert.equal(planModulePlacement('unknown',[],catalog).ok,false);});

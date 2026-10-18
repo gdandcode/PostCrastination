@@ -1,5 +1,20 @@
 ﻿@import "tailwindcss";
 
+.account-title-picker {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px;max-height:28rem;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;padding:8px;margin-top:16px;align-items:stretch;}
+.account-title-option {min-width:0;min-height:116px;width:100%;overflow-wrap:anywhere;}
+.account-title-option[aria-pressed="true"] {box-shadow:inset 0 0 0 2px var(--pc-text,#fff);}
+.account-title-header {display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 12px;}
+.account-title-name {flex:1 1 140px;min-width:0;}
+.account-title-rarity {flex:0 0 auto;max-width:100%;white-space:normal;overflow-wrap:anywhere;}
+.account-title-option:focus-visible {outline-offset:-4px;}
+.account-signin-grid {display:grid;grid-template-columns:minmax(0,1fr);gap:12px;}
+.account-signin-grid > div {min-width:0;}
+.account-appearance-card {display:flex;flex-direction:column;align-items:flex-start;gap:14px;}
+.account-appearance-card h3 {margin:0;font-size:1.25rem;font-weight:700;line-height:1.3;}
+.account-appearance-card p {margin:0;line-height:1.6;color:var(--pc-muted);}
+.account-appearance-card > button {margin-top:4px;}
+@media(min-width:768px){.account-signin-grid {grid-template-columns:repeat(2,minmax(0,1fr));}}
+
 html,
 body,
 #root {
@@ -46,6 +61,9 @@ body {
 /* Responsive study workspace */
 :root { color-scheme: dark; }
 button, input, select, textarea { font: inherit; }
+.profile-equipped-title {max-width:100%;}
+.profile-equipped-title-button {max-width:100%;padding:4px 10px;font-size:.75rem;line-height:1.4;font-weight:500;overflow-wrap:anywhere;text-align:left;}
+.profile-stat-value {font-weight:400;}
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 :focus-visible { outline: 3px solid #e9b5ff; outline-offset: 4px; }
@@ -67,7 +85,7 @@ button:disabled { cursor: not-allowed; }
 .study-workspace input, .study-workspace select { min-height: 44px; }
 .study-workspace h2, .study-workspace li { overflow-wrap: anywhere; }
 @media (max-width: 900px) {
- .site-navigation .secondary-nav { display: none; }
+ .site-nav-actions {flex-wrap:wrap;justify-content:flex-end;}
  .custom-widget-board { height: auto; }
  .custom-widget-board [data-grid-stage] { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-template-rows: none; height: auto; }
  .custom-widget-board [data-grid-stage] > * { grid-column: auto !important; grid-row: auto !important; min-height: 240px; }
@@ -85,7 +103,7 @@ button:disabled { cursor: not-allowed; }
  .study-workspace { padding-top: 110px; }
  .today-grid { grid-template-columns: minmax(0,1fr); }
  .workspace-card { padding: 18px; }
- .study-tabs { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; z-index: 40; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); background: #18131f; border-top: 1px solid #ffffff26; justify-content: space-around; }
+ .study-tabs { flex-wrap: wrap; gap: 4px; }
  .workspace-tab { padding: 10px; font-size: 13px; }
  .task-form-head { display: none; }
  .task-form-fields { grid-template-columns: minmax(0,1fr); }
@@ -458,8 +476,24 @@ button:disabled { cursor: not-allowed; }
 .personal-task-dialog {width:min(580px,calc(100vw - 24px));max-height:85dvh;overflow:auto;color:inherit;background:var(--pc-surface);margin:auto;padding:1.5rem;border:1px solid #8885;border-radius:1.25rem;}
 .personal-task-dialog::backdrop {background:#0009;}
 .personal-task-dialog fieldset {display:grid;gap:1rem;min-width:0;}
+.personal-task-dialog .assignment-field {gap:12px;}
 .personal-task-dialog footer {margin-top:1.25rem;justify-content:flex-end;}
 .personal-task-list {list-style:none;padding:0;display:grid;gap:1rem;margin-top:1rem;}
+.personal-task-options {margin-top:18px;}
+.personal-task-dialog #task-dialog-title {font-size:1.5rem;font-weight:700;line-height:1.25;}
+.personal-task-options summary {cursor:pointer;line-height:1.5;}
+.personal-task-options[open] summary {margin-bottom:12px;}
+.themed-app .personal-task-delete {min-height:34px;padding:6px 12px;border-radius:10px;font-size:.8125rem;font-weight:500;}
+@media(pointer:coarse) {.themed-app .personal-task-delete {min-height:44px;}}
+.task-import-panel {margin-block:20px;}
+.task-import-panel summary {cursor:pointer;line-height:1.5;}
+.task-import-panel[open] summary {margin-bottom:12px;}
+.task-import-panel .task-import-note {margin:0 0 16px;line-height:1.6;color:var(--pc-muted);}
+.task-import-row {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;padding:12px 0;}
+.task-import-row + .task-import-row {border-top:1px solid var(--pc-border);}
+.task-import-row > span {min-width:0;overflow-wrap:anywhere;line-height:1.5;}
+.task-import-row > button {margin:0;white-space:nowrap;}
+@media(max-width:480px) {.task-import-row {grid-template-columns:minmax(0,1fr);gap:10px;} .task-import-row > button {justify-self:start;}}
 
 .themed-app .personal-task-dialog {background:var(--pc-surface) !important;color:var(--pc-text);backdrop-filter:none !important;}
 
@@ -477,6 +511,18 @@ button:disabled { cursor: not-allowed; }
 .student-sidebar svg {width:24px;height:24px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
 .student-sidebar-toggle {margin-bottom:12px;}
 .student-dashboard {padding-left:96px!important;}
+.dashboard-task-overview {margin-block:20px;}
+.study-mode-content {display:flow-root;padding-bottom:24px;}
+.study-mode-content + .dashboard-task-overview {margin-top:0;}
+/* Keep expanded navigation beside the workspace instead of over its text. */
+.themed-app:has(> .student-sidebar) :is(.student-dashboard,.teacher-dashboard,.teacher-page,.behaviour-page,.resources-page,.achievement-page,.workspace-rail-page > section) {transition:padding-left 240ms cubic-bezier(.2,.8,.2,1);}
+@media(min-width:801px) {
+ .themed-app:has(> .student-sidebar.expanded) :is(.student-dashboard,.teacher-dashboard,.teacher-page,.behaviour-page,.resources-page,.achievement-page,.workspace-rail-page > section) {padding-left:246px!important;}
+}
+.sidebar-backdrop {display:none;}
+@media(max-width:800px) {
+ .sidebar-backdrop {display:block;position:fixed;inset:0;z-index:44;background:#0008;backdrop-filter:blur(3px);}
+}
 @media(min-width:1500px) {.student-sidebar {left:max(12px,calc((100vw - 1470px)/2));}}
 @media(max-width:800px) {.student-sidebar {top:178px;left:6px;width:54px;padding:5px;} .student-dashboard {padding-left:74px!important;padding-right:12px!important;} .student-sidebar.expanded {width:200px;box-shadow:8px 0 30px #0005;}}
 
@@ -565,3 +611,7 @@ button:disabled { cursor: not-allowed; }
 .resource-explorer-heading{display:flex;gap:1rem;align-items:center;min-width:0}.resource-back{display:flex;align-items:center;gap:.5rem;flex-shrink:0}.resource-back svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.resource-back:disabled{opacity:.45;cursor:default}.resource-address-bar{border:1px solid var(--pc-border);border-radius:12px;background:var(--pc-surface);padding:.65rem .8rem;gap:.3rem;margin:1rem 0 1.5rem}.resource-address-bar button{text-decoration:none;max-width:100%;overflow-wrap:anywhere;text-align:left}.resource-address-bar button:hover:not(:disabled){background:color-mix(in srgb,var(--pc-purple) 15%,var(--pc-surface))}.resource-address-bar [aria-current=page]{color:var(--pc-purple)}@media(max-width:600px){.resource-explorer-header{flex-wrap:wrap;gap:.8rem}.resource-explorer-heading{align-items:flex-start}.resource-back{padding:.65rem!important}.resource-back span{display:none}.resource-address-bar{font-size:.9rem}}
 
 .resource-entry{border:1px solid var(--pc-border);border-radius:12px;overflow:hidden}.resource-entry .resource-row{border:0;border-radius:0}.resource-entry-actions{display:flex;gap:1rem;justify-content:flex-end;flex-wrap:wrap;padding:.3rem 1rem .8rem;background:var(--pc-surface)}.resource-search{display:flex;align-items:flex-end;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}.resource-search label{flex:1;min-width:180px}.resource-drop-area.dragging{outline:3px dashed var(--pc-purple);outline-offset:4px}.resource-drop-hint{padding:1rem;font-weight:700;text-align:center;background:color-mix(in srgb,var(--pc-purple) 15%,var(--pc-surface));border-radius:12px}
+
+.themed-app:has(> .student-sidebar) .achievement-page {padding-left:96px!important;}
+@media(min-width:801px) {.themed-app:has(> .student-sidebar.expanded) .achievement-page {padding-left:246px!important;}}
+@media(max-width:800px) {.themed-app:has(> .student-sidebar) .achievement-page {padding-left:74px!important;padding-right:12px!important;}}

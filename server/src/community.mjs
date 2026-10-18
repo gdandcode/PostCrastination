@@ -7,7 +7,7 @@ export function ownProfile(row) {
 export async function ensureProfile(pool, identity) {
   const name = typeof identity.name === 'string' ? identity.name.trim().slice(0, 80) : '';
   const { rows } = await pool.query(`INSERT INTO app.community_profiles(firebase_uid,display_name,onboarding_complete,account_role)
-    VALUES ($1,$2,$3,CASE WHEN EXISTS(SELECT 1 FROM app.classes WHERE owner_uid=$1) THEN 'teacher' ELSE 'student' END) ON CONFLICT(firebase_uid) DO UPDATE SET onboarding_complete=app.community_profiles.onboarding_complete OR EXCLUDED.onboarding_complete,account_role=CASE WHEN app.community_profiles.account_role='sysadmin' THEN 'sysadmin' WHEN EXISTS(SELECT 1 FROM app.classes WHERE owner_uid=$1) THEN 'teacher' ELSE app.community_profiles.account_role END
+    VALUES ($1,$2,$3,'student') ON CONFLICT(firebase_uid) DO UPDATE SET onboarding_complete=app.community_profiles.onboarding_complete OR EXCLUDED.onboarding_complete
     RETURNING id,display_name,visible,study_location,onboarding_complete,full_name,account_role,school_id,streak_admin`, [identity.uid, name || 'Student', !identity.firebase || identity.firebase.sign_in_provider === 'password']);
   return ownProfile(rows[0]);
 }
